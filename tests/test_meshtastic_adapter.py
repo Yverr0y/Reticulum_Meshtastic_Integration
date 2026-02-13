@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from meshtastic.protobuf import atak_pb2
+
 from rch_mesh_bridge.config import MeshtasticConfig
 from rch_mesh_bridge.meshtastic_adapter import MeshtasticAdapter
 
@@ -81,6 +83,84 @@ def test_position_packet_is_mapped() -> None:
     assert event.latitude == 12.34
     assert event.longitude == 56.78
     assert event.altitude == 90.0
+    assert event.source == "position_packet"
+    assert event.cot_type == "a-f-G-E-S"
+
+
+def test_node_updated_event_is_mapped() -> None:
+    fake_interface = FakeInterface()
+    adapter, position_events, _, _ = _build_adapter(channel=0)
+    adapter._interface = fake_interface
+
+    adapter._on_node_updated(
+        node={
+            "num": 321,
+            "channel": 0,
+            "lastHeard": 1700000001,
+            "user": {
+                "id": "!node321",
+                "longName": "Sensor Node",
+                "shortName": "SN",
+                "role": "TAK_TRACKER",
+            },
+            "position": {"latitude": 44.1, "longitude": -66.2, "altitude": 125.0},
+            "deviceMetrics": {"batteryLevel": 87},
+        },
+        interface=fake_interface,
+    )
+
+    assert len(position_events) == 1
+    event = position_events[0]
+    assert event.node_id == "!node321"
+    assert event.source == "node_update"
+    assert event.cot_type == "a-f-G-E-S"
+    assert event.battery == 87.0
+    assert event.node_role == "TAK_TRACKER"
+
+
+def test_atak_plugin_pli_packet_is_mapped() -> None:
+    fake_interface = FakeInterface()
+    fake_interface.nodesByNum[777] = {
+        "user": {"longName": "Mesh Radio", "shortName": "MR", "id": "!7777"}
+    }
+    adapter, position_events, _, _ = _build_adapter(channel=0)
+    adapter._interface = fake_interface
+
+    tak = atak_pb2.TAKPacket()
+    tak.contact.callsign = "Alpha-1"
+    tak.contact.device_callsign = "Phone-1"
+    tak.group.team = atak_pb2.Team.Blue
+    tak.group.role = atak_pb2.MemberRole.TeamLead
+    tak.status.battery = 63
+    tak.pli.latitude_i = 438042620
+    tak.pli.longitude_i = -660865020
+    tak.pli.altitude = 12
+    tak.pli.speed = 4
+    tak.pli.course = 278
+
+    adapter._on_atak_plugin_packet(
+        packet={
+            "from": 777,
+            "fromId": "!7777",
+            "channel": 0,
+            "rxTime": 1700000002,
+            "decoded": {"payload": tak.SerializeToString()},
+        },
+        interface=fake_interface,
+    )
+
+    assert len(position_events) == 1
+    event = position_events[0]
+    assert event.node_id == "!7777"
+    assert event.source == "atak_pli"
+    assert event.cot_type == "a-f-G-U-C"
+    assert event.long_name == "Alpha-1"
+    assert event.device_callsign == "Phone-1"
+    assert event.team == "Blue"
+    assert event.role == "TeamLead"
+    assert event.speed == 4.0
+    assert event.course == 278.0
+    assert event.battery == 63.0
 
 
 def test_channel_filter_rejects_non_matching_packets() -> None:

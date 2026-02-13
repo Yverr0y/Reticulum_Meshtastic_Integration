@@ -22,15 +22,18 @@ class RchClient:
         self._config = config
         self._client = client
         self._external_client = client is not None
+        headers = self._build_headers(config)
 
         if self._client is None:
             self._client = httpx.AsyncClient(
                 base_url=config.rest_url,
                 timeout=config.timeout_seconds,
-                headers=self._build_headers(config),
+                headers=headers,
             )
         else:
-            self._client.headers.update(self._build_headers(config))
+            self._client.headers.pop("Authorization", None)
+            self._client.headers.pop("X-API-Key", None)
+            self._client.headers.update(headers)
 
     async def __aenter__(self) -> "RchClient":
         return self
@@ -47,7 +50,7 @@ class RchClient:
         headers = {"Accept": "application/json"}
         if config.auth_mode == "bearer":
             headers["Authorization"] = f"Bearer {config.api_token}"
-        else:
+        elif config.auth_mode == "x_api_key":
             headers["X-API-Key"] = config.api_token
         return headers
 
@@ -66,6 +69,16 @@ class RchClient:
         )
         if not isinstance(data, dict):
             raise RchClientError("Unexpected /api/markers create response")
+        return data
+
+    async def list_marker_symbols(self) -> list[dict[str, Any]]:
+        data = await self._request_json(
+            "GET",
+            "/api/markers/symbols",
+            expected_status={200},
+        )
+        if not isinstance(data, list):
+            raise RchClientError("Unexpected /api/markers/symbols response (expected list)")
         return data
 
     async def update_marker_position(
@@ -156,4 +169,3 @@ class RchClient:
             return response.json()
         except json.JSONDecodeError as exc:
             raise RchClientError(f"Invalid JSON from {method} {path}") from exc
-

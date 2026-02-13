@@ -25,6 +25,7 @@
 - Network access to:
   - Meshtastic TCP endpoint (default `4403`)
   - RCH REST endpoint
+- Reticulum Community Hub (RCH) is required for this integration and must be running before the bridge starts.
 
 ## Install
 
@@ -44,15 +45,24 @@ pip install -e ".[dev]"
 
 ## Configuration
 
-Copy `config.example.ini` to `config.ini` and update required fields:
+Use `config.ini` and update required fields:
 
 - `[meshtastic].host`
-- `[rch].rest_url`
-- `[rch].api_token`
+- `[rch].rest_url` (optional; defaults to `http://localhost:8000`)
+- `[rch].auth_mode` (optional; default is unauthenticated `none`)
+- `[rch].api_token` (required only for `bearer` or `x_api_key`)
 
 Runtime paths (`pid_file`, `status_file`) are resolved relative to the config file directory when not absolute.
 
+### Meshtastic Device Role Guidance
+
+- Do **not** use Meshtastic device role `TAK` for this bridge.
+- Recommended roles are `TRACKER` (`TAK_TRACKER`) or `CLIENT`.
+- `TRACKER` and `CLIENT` both work correctly for regular position flow and ATAK plugin payload ingestion.
+
 ## CLI
+
+Important: start and verify RCH first, then start `rch-mesh-bridge`.
 
 ### Start (daemon mode by default)
 
@@ -123,12 +133,15 @@ pytest -q
   - Check Meshtastic host/port reachability.
   - Confirm device exposes TCP API on the expected network.
 - Marker creation fails
-  - Validate RCH auth (`bearer` vs `x_api_key`).
+  - Validate RCH auth mode (`none`, `bearer`, `x_api_key`).
   - Verify token has access to `/api/markers`.
+  - The bridge auto-retries marker creation with a supported symbol from `/api/markers/symbols` when RCH returns `422` for marker type/symbol.
+  - Standard Meshtastic marker defaults to `map-marker-account`; if `marker_type` is `auto` (or left legacy `meshtastic_node`), the bridge sends marker type equal to the selected symbol.
 - Chat not visible
   - Check topic permissions and `POST /Message` authorization.
   - Confirm `topic_path_template` resolves as expected.
 - Reconnect loop noisy
   - Increase `[runtime].reconnect_max_seconds`.
   - Set `[general].log_level = WARNING` for reduced logging.
-
+- No/limited updates when radio role is `TAK`
+  - Change device role to `TRACKER` (`TAK_TRACKER`) or `CLIENT`.

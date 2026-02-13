@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
-AUTH_MODES = {"bearer", "x_api_key"}
+AUTH_MODES = {"none", "no_auth", "bearer", "x_api_key"}
 
 
 class BridgeConfigError(ValueError):
@@ -125,10 +125,14 @@ def load_config(path: str | Path) -> AppConfig:
         parser, "runtime", "reconnect_max_seconds", 60
     )
 
-    rest_url = _require(parser, "rch", "rest_url")
-    api_token = _require(parser, "rch", "api_token")
+    rest_url = parser.get("rch", "rest_url", fallback="http://localhost:8000").strip()
+    if not rest_url:
+        rest_url = "http://localhost:8000"
     identity = parser.get("rch", "identity", fallback="default").strip() or "default"
-    auth_mode = parser.get("rch", "auth_mode", fallback="bearer").strip().lower()
+    auth_mode = parser.get("rch", "auth_mode", fallback="none").strip().lower()
+    if auth_mode == "no_auth":
+        auth_mode = "none"
+    api_token = parser.get("rch", "api_token", fallback="").strip()
     timeout_seconds = _float_setting(parser, "rch", "timeout_seconds", 5.0)
 
     topic_path_template = parser.get(
@@ -144,7 +148,7 @@ def load_config(path: str | Path) -> AppConfig:
     marker_type = parser.get(
         "mapping",
         "marker_type",
-        fallback="meshtastic_node",
+        fallback="auto",
     ).strip()
     marker_symbol = parser.get("mapping", "marker_symbol", fallback="auto").strip()
     marker_category = parser.get("mapping", "marker_category", fallback="mdi").strip()
@@ -178,6 +182,10 @@ def load_config(path: str | Path) -> AppConfig:
     if auth_mode not in AUTH_MODES:
         raise BridgeConfigError(
             f"Invalid [rch] auth_mode: {auth_mode}. Expected one of {sorted(AUTH_MODES)}"
+        )
+    if auth_mode in {"bearer", "x_api_key"} and not api_token:
+        raise BridgeConfigError(
+            f"Missing required setting [rch] api_token for auth_mode '{auth_mode}'"
         )
     if timeout_seconds <= 0:
         raise BridgeConfigError(
@@ -250,4 +258,3 @@ def load_config(path: str | Path) -> AppConfig:
         runtime=runtime,
         general=GeneralConfig(log_level=log_level),
     )
-

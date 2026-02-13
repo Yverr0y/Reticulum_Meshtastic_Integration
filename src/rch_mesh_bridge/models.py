@@ -24,6 +24,15 @@ class MeshtasticPositionEvent:
     altitude: float | None
     timestamp: datetime
     channel: int
+    source: str = "position_packet"
+    cot_type: str | None = None
+    speed: float | None = None
+    course: float | None = None
+    battery: float | None = None
+    device_callsign: str | None = None
+    team: str | None = None
+    role: str | None = None
+    node_role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -57,4 +66,3 @@ class BridgeStatusSnapshot:
             "observed_nodes": self.observed_nodes,
             "last_packet": to_rfc3339(self.last_packet),
         }
-

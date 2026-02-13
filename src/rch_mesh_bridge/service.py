@@ -37,6 +37,14 @@ class BridgeService:
         self._adapter_factory = adapter_factory
 
     async def run(self, stop_event: threading.Event) -> None:
+        LOG.info(
+            "Bridge service starting (meshtastic=%s:%s channel=%s rch=%s auth_mode=%s)",
+            self._config.meshtastic.host,
+            self._config.meshtastic.port,
+            self._config.meshtastic.channel,
+            self._config.rch.rest_url,
+            self._config.rch.auth_mode,
+        )
         status_store = RuntimeStatusStore(self._config.runtime.status_file)
         event_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
         loop = asyncio.get_running_loop()
@@ -49,11 +57,13 @@ class BridgeService:
 
         def on_connection_state(connected: bool) -> None:
             status_store.set_meshtastic_connected(connected)
+            LOG.info("Meshtastic connected=%s", connected)
 
         async with self._rch_client_factory(self._config.rch) as rch_client:
             core = BridgeCore(self._config, rch_client)
             try:
                 await core.bootstrap_bindings()
+                LOG.info("Bootstrapped %s existing Meshtastic node bindings", core.observed_nodes)
             except RchClientError as exc:
                 LOG.warning("Bootstrap from RCH markers failed: %s", exc)
 
@@ -83,6 +93,7 @@ class BridgeService:
                 while not stop_event.is_set():
                     await asyncio.sleep(0.25)
             finally:
+                LOG.info("Bridge service shutting down")
                 adapter.stop()
                 await event_queue.put(("shutdown", None))
                 await processor_task
@@ -91,6 +102,7 @@ class BridgeService:
                     await status_task
                 status_store.set_meshtastic_connected(False)
                 status_store.write_snapshot(state="stopped")
+                LOG.info("Bridge service stopped")
 
     async def _event_processor(
         self,
@@ -108,9 +120,21 @@ class BridgeService:
                 if kind == "position" and isinstance(payload, MeshtasticPositionEvent):
                     await core.handle_position_event(payload)
                     status_store.mark_packet(payload.timestamp)
+                    LOG.info(
+                        "Forwarded position to RCH source=%s node=%s lat=%.6f lon=%.6f",
+                        payload.source,
+                        payload.node_id,
+                        payload.latitude,
+                        payload.longitude,
+                    )
                 elif kind == "chat" and isinstance(payload, MeshtasticChatEvent):
                     await core.handle_chat_event(payload)
                     status_store.mark_packet(payload.timestamp)
+                    LOG.info(
+                        "Forwarded chat to RCH node=%s text_len=%s",
+                        payload.node_id,
+                        len(payload.message_text),
+                    )
             except RchClientError as exc:
                 # V1 behavior is drop-on-failure. No persistence or replay.
                 LOG.error("Dropped outbound payload due to RCH failure: %s", exc)
@@ -132,4 +156,3 @@ class BridgeService:
     @staticmethod
     def _derive_state(status_store: RuntimeStatusStore) -> str:
         return "running" if status_store.is_connected() else "degraded"
-

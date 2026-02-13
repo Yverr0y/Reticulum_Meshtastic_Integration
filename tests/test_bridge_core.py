@@ -20,14 +20,17 @@ from rch_mesh_bridge.models import MeshtasticChatEvent, MeshtasticPositionEvent
 class FakeRchClient:
     def __init__(self) -> None:
         self.markers = []
+        self.created_marker_payloads = []
         self.topics = []
         self.sent_messages = []
         self.position_updates = []
+        self.symbols = []
 
     async def list_markers(self):
         return list(self.markers)
 
     async def create_marker(self, marker_payload):
+        self.created_marker_payloads.append(dict(marker_payload))
         marker_hash = "obj-created"
         record = {
             "object_destination_hash": marker_hash,
@@ -43,6 +46,9 @@ class FakeRchClient:
 
     async def list_topics(self):
         return list(self.topics)
+
+    async def list_marker_symbols(self):
+        return list(self.symbols)
 
     async def create_topic(self, topic_name, topic_path, topic_description=None):
         del topic_description
@@ -61,9 +67,9 @@ def _config(tmp_path: Path) -> AppConfig:
         meshtastic=MeshtasticConfig(host="127.0.0.1", port=4403, channel=0, reconnect_max_seconds=60),
         rch=RchConfig(
             rest_url="http://localhost:8080",
-            api_token="token",
+            api_token="",
             identity="default",
-            auth_mode="bearer",
+            auth_mode="none",
             timeout_seconds=5.0,
         ),
         mapping=MappingConfig(
@@ -144,3 +150,49 @@ async def test_position_creates_marker_then_updates_position(tmp_path: Path) -> 
     assert len(fake_client.position_updates) == 2
     assert fake_client.position_updates[0][0] == "obj-created"
 
+
+@pytest.mark.asyncio
+async def test_position_keeps_separate_bindings_for_regular_and_atak(tmp_path: Path) -> None:
+    fake_client = FakeRchClient()
+    core = BridgeCore(_config(tmp_path), fake_client)
+
+    regular_event = MeshtasticPositionEvent(
+        node_id="!node-123",
+        long_name="Radio Node",
+        short_name="RN",
+        latitude=10.0,
+        longitude=20.0,
+        altitude=30.0,
+        timestamp=datetime.now(tz=timezone.utc),
+        channel=0,
+        source="node_update",
+        cot_type="a-f-G-E-S",
+    )
+    atak_event = MeshtasticPositionEvent(
+        node_id="!node-123",
+        long_name="ATAK User",
+        short_name="AU",
+        latitude=11.0,
+        longitude=21.0,
+        altitude=31.0,
+        timestamp=datetime.now(tz=timezone.utc),
+        channel=0,
+        source="atak_pli",
+        cot_type="a-f-G-U-C",
+        speed=3.5,
+        course=180.0,
+        node_role="TAK_TRACKER",
+    )
+
+    await core.handle_position_event(regular_event)
+    await core.handle_position_event(atak_event)
+
+    assert core.observed_nodes == 2
+    assert len(fake_client.created_marker_payloads) == 2
+    assert fake_client.created_marker_payloads[0]["notes"].startswith(
+        "meshtastic_node_id=!node-123"
+    )
+    assert fake_client.created_marker_payloads[1]["notes"].startswith(
+        "meshtastic_node_id=tak:!node-123"
+    )
+    assert "node_role=TAK_TRACKER" in fake_client.created_marker_payloads[1]["notes"]
