@@ -1,0 +1,17 @@
+[Unit]
+Description=RCH Meshtastic Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/reticulum_meshtastic_integration
+ExecStart=/usr/bin/env rch-mesh-bridge start --foreground --config /etc/rch-mesh-bridge/config.ini
+Restart=always
+RestartSec=5
+User=rchbridge
+Group=rchbridge
+
+[Install]
+WantedBy=multi-user.target
+
