@@ -1,6 +1,6 @@
 # Reticulum Meshtastic Integration
 
-`Reticulum_Meshtastic_Integration` is a standalone Python 3.12 service that ingests Meshtastic packets over WiFi, maps nodes to RCH objects (markers), and forwards telemetry plus broadcast chat into Reticulum Community Hub (RCH) over REST.
+`Reticulum_Meshtastic_Integration` is a standalone Python 3.12 service that ingests Meshtastic packets over WiFi, maps nodes to Reticulum markers, and forwards t broadcast chat into Reticulum Community Hub (RCH).
 
 ## Scope
 
@@ -22,10 +22,11 @@
 ## Requirements
 
 - Python `3.12+`
+- A WiFi-capable LoRa device flashed with Meshtastic (Suggested: Heltec V3 or Heltec V4.)
 - Network access to:
   - Meshtastic TCP endpoint (default `4403`)
   - RCH REST endpoint
-- Reticulum Community Hub (RCH) is required for this integration and must be running before the bridge starts.
+- [Reticulum Community Hub (RCH)](https://github.com/FreeTAKTeam/Reticulum-Community-Hub) is required for this integration and must be running before the bridge starts.
 
 ## Install
 
@@ -63,9 +64,10 @@ Runtime paths (`pid_file`, `status_file`) are resolved relative to the config fi
 
 ### Meshtastic Device Role Guidance
 
-- Do **not** use Meshtastic device role `TAK` for this bridge.
-- Recommended roles are `TRACKER` (`TAK_TRACKER`) or `CLIENT`.
-- `TRACKER` and `CLIENT` both work correctly for regular position flow and ATAK plugin payload ingestion.
+
+- Recommended roles are `TRACKER`  or `CLIENT`.
+- Do **not** use Meshtastic device role `TAK` or `TAK_TRACKER`
+- `TRACKER` and `CLIENT` both work correctly for regular position flow payload ingestion.
 
 ## CLI
 
@@ -118,12 +120,42 @@ Example:
 
 ## systemd
 
-Example unit: `infra/systemd/rch-mesh-bridge.service`
+Example pf a service for Linux:
+
+```ini
+[Unit]
+Description=RCH Meshtastic Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=meshbridge
+Group=meshbridge
+WorkingDirectory=/opt/rch-mesh-bridge
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/rch-mesh-bridge/.venv/bin/rch-mesh-bridge start --foreground --config /opt/rch-mesh-bridge/config.ini
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install and enable:
 
 ```bash
-sudo cp infra/systemd/rch-mesh-bridge.service /etc/systemd/system/
+sudo cp /opt/rch-mesh-bridge/rch-mesh-bridge.service /etc/systemd/system/rch-mesh-bridge.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now rch-mesh-bridge
+sudo systemctl enable --now rch-mesh-bridge.service
+sudo systemctl start rch-mesh-bridge.service
+sudo systemctl status rch-mesh-bridge.service
+```
+
+View logs:
+
+```bash
+journalctl -u rch-mesh-bridge.service -f
 ```
 
 ## Development
