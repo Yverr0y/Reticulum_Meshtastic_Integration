@@ -1,6 +1,6 @@
 # Reticulum Meshtastic Integration
 
-`Reticulum_Meshtastic_Integration` is a standalone Python 3.12 service that ingests Meshtastic packets over WiFi, maps nodes to Reticulum markers, and forwards t broadcast chat into Reticulum Community Hub (RCH).
+`Reticulum_Meshtastic_Integration` is a standalone Python 3.12 service that ingests Meshtastic packets over WiFi/TCP, maps Meshtastic nodes to RCH markers, and forwards broadcast chat into Reticulum Community Hub (RCH) topics.
 
 ## Scope
 
@@ -18,6 +18,70 @@
   - Reticulum to Meshtastic reverse flow
   - Persistent telemetry/chat history
   - Rate limiting
+
+## Use Case: Seamless Integration of Meshtastic and Reticulum via RCH
+
+![MeshTastic RNS Bridge](MeshTasticIntegration.png)
+This bridge is designed for scenarios where a forward team uses off-the-shelf Meshtastic devices, while leadership/command uses Reticulum-native applications (and wants one shared operational picture).
+
+### Section 1: The Edge (Team A)
+
+- **Hardware**: Meshtastic devices (SenseCAP, WisMesh, Heltec, etc.)
+- **Profile**: forward recon / field team
+- **Experience**: "zero-config" Meshtastic
+
+Team A runs standard Meshtastic firmware and operates as an autonomous LoRa mesh for position and broadcast chat. They don't need accounts, apps, or networking knowledge related to Reticulum or RCH.
+
+- **Plug-and-Play**: Team A stays on stock Meshtastic firmware with familiar UX.
+- **Invisible Uplink**: GPS and broadcast chat ride the LoRa mesh; the bridge picks them up over the device's TCP/WiFi interface.
+- **Autonomous Mesh**: local comms remain self-healing even if the upstream link to RCH is intermittent.
+
+### Section 2: The Adaptation Layer (this project)
+
+- **Bridge**: `rch-mesh-bridge`
+- **Function**: protocol translation and normalization
+
+`rch-mesh-bridge` listens to the Meshtastic TCP API (typically exposed over WiFi) and converts what it receives into RCH REST calls:
+
+- **Protocol bridge**: Meshtastic packets in, RCH REST calls out.
+- **Identity mapping**: each marker has an `object_destination_hash` (the Reticulum-side identifier) that becomes the stable handle for that Meshtastic node in the RCH/Reticulum ecosystem.
+- **Data aggregation**: position telemetry updates markers; channel broadcast chat is injected into an RCH topic (default `meshtastic.channel.{channel}`) for all subscribers.
+- **Stable binding**: created markers are tagged in `notes` (default prefix `meshtastic_node_id=`) so the bridge can re-bind to existing markers across restarts.
+
+At a glance:
+
+| Meshtastic | RCH / Reticulum side |
+|---|---|
+| Node (`node_id`) | Marker (`object_destination_hash`) |
+| Channel (`channel`) | Topic (`chat_topic_path`) |
+| Position updates | Marker position updates |
+| Broadcast chat | Topic messages |
+
+Note: the bridge is intentionally one-way and stateless; any retention/archiving is handled by RCH, not by this service.
+
+### Section 3: The Integrated Network (Team B)
+
+- **Hardware**: mobile devices running Reticulum-native apps (e.g. Sideband, Columba)
+- **Profile**: field leads and technical operators
+- **Connection**: any available transport (Bluetooth, LoRa, WiFi, LTE)
+
+Team B uses Reticulum-native tooling to see both their Reticulum peers and Team A's Meshtastic nodes in the same map/topic views via RCH. From their perspective, Team A appears as active tactical assets even though the underlying radio protocol is different.
+
+- **Unified View**: Team B sees Team A + Team B together in one operational picture.
+- **Cross-Platform Awareness**: Meshtastic-origin assets appear as first-class markers and chat participants.
+- **Resilient Transport**: Reticulum-native apps can use whatever link is available (radio, WiFi, LTE) without changing Team A's workflow.
+
+### Section 4: Command & Control (the Hub)
+
+- **Hub**: Reticulum Community Hub (RCH)
+- **Profile**: tactical operations center (TOC)
+- **View**: "total domain awareness"
+
+RCH becomes the aggregation point for markers and chat. Multiple `rch-mesh-bridge` instances can feed a single RCH (for example, one per Meshtastic "island"), scaling up to a shared Reticulum "continent" without changing Team A's field workflow.
+
+- **The Global Map**: the TOC can monitor all Meshtastic and Reticulum assets in one place.
+- **Data Archiving**: chat/marker history is centralized in RCH according to RCH's storage configuration (the bridge itself is stateless).
+- **Scalability**: bridge multiple Meshtastic islands into one shared Reticulum-backed view by pointing them at the same RCH.
 
 ## Requirements
 
@@ -65,8 +129,8 @@ Runtime paths (`pid_file`, `status_file`) are resolved relative to the config fi
 ### Meshtastic Device Role Guidance
 
 
-- Recommended roles are `TRACKER`  or `CLIENT`.
-- Do **not** use Meshtastic device role `TAK` or `TAK_TRACKER`
+- Recommended roles are `TRACKER` or `CLIENT`.
+- Do **not** use any Meshtastic `TAK*` roles (including `TAK` and `TAK_TRACKER` / "TAK Tracker").
 - `TRACKER` and `CLIENT` both work correctly for regular position flow payload ingestion.
 
 ## CLI
@@ -120,7 +184,7 @@ Example:
 
 ## systemd
 
-Example pf a service for Linux:
+Example of a service for Linux:
 
 ```ini
 [Unit]
@@ -183,5 +247,5 @@ pytest -q
 - Reconnect loop noisy
   - Increase `[runtime].reconnect_max_seconds`.
   - Set `[general].log_level = WARNING` for reduced logging.
-- No/limited updates when radio role is `TAK`
-  - Change device role to `TRACKER` (`TAK_TRACKER`) or `CLIENT`.
+- No/limited updates when the radio is set to a TAK role
+  - Do not use any `TAK*` roles (`TAK`, `TAK_TRACKER`); use `TRACKER` or `CLIENT` instead.
