@@ -32,6 +32,7 @@ class RchConfig:
 
 @dataclass(frozen=True)
 class MappingConfig:
+    chat_topic_path: str
     topic_path_template: str
     topic_name_template: str
     marker_type: str
@@ -140,6 +141,9 @@ def load_config(path: str | Path) -> AppConfig:
         "topic_path_template",
         fallback="meshtastic.channel.{channel}",
     ).strip()
+    chat_topic_path = parser.get("mapping", "chat_topic_path", fallback="").strip()
+    if not chat_topic_path:
+        chat_topic_path = topic_path_template
     topic_name_template = parser.get(
         "mapping",
         "topic_name_template",
@@ -199,6 +203,8 @@ def load_config(path: str | Path) -> AppConfig:
 
     if not topic_path_template:
         raise BridgeConfigError("Setting [mapping] topic_path_template cannot be empty")
+    if not chat_topic_path:
+        raise BridgeConfigError("Setting [mapping] chat_topic_path cannot be empty")
     if not topic_name_template:
         raise BridgeConfigError("Setting [mapping] topic_name_template cannot be empty")
     if not marker_type:
@@ -213,6 +219,7 @@ def load_config(path: str | Path) -> AppConfig:
         raise BridgeConfigError("Setting [mapping] node_tag_prefix cannot be empty")
 
     for label, template in (
+        ("chat_topic_path", chat_topic_path),
         ("topic_path_template", topic_path_template),
         ("topic_name_template", topic_name_template),
     ):
@@ -247,6 +254,7 @@ def load_config(path: str | Path) -> AppConfig:
             timeout_seconds=timeout_seconds,
         ),
         mapping=MappingConfig(
+            chat_topic_path=chat_topic_path,
             topic_path_template=topic_path_template,
             topic_name_template=topic_name_template,
             marker_type=marker_type,

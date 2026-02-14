@@ -27,6 +27,7 @@ host = 127.0.0.1
     assert config.rch.auth_mode == "none"
     assert config.rch.api_token == ""
     assert config.rch.identity == "default"
+    assert config.mapping.chat_topic_path == "meshtastic.channel.{channel}"
     assert config.runtime.pid_file.name == "bridge.pid"
     assert config.runtime.status_file.name == "status.json"
 
@@ -82,6 +83,25 @@ topic_path_template = meshtastic.{unknown}
 
     with pytest.raises(BridgeConfigError):
         load_config(config_path)
+
+
+def test_chat_topic_path_is_configurable(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path,
+        """
+[meshtastic]
+host = 192.168.1.10
+
+[rch]
+rest_url = http://localhost:8080
+
+[mapping]
+chat_topic_path = custom.topic.{channel}
+""".strip(),
+    )
+
+    config = load_config(config_path)
+    assert config.mapping.chat_topic_path == "custom.topic.{channel}"
 
 
 def test_token_required_for_bearer_auth(tmp_path: Path) -> None:

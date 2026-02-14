@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+import logging
 
 from rch_mesh_bridge.bridge_core import BridgeCore
 from rch_mesh_bridge.config import (
@@ -73,6 +74,7 @@ def _config(tmp_path: Path) -> AppConfig:
             timeout_seconds=5.0,
         ),
         mapping=MappingConfig(
+            chat_topic_path="meshtastic.channel.{channel}",
             topic_path_template="meshtastic.channel.{channel}",
             topic_name_template="Meshtastic Channel {channel}",
             marker_type="meshtastic_node",
@@ -125,6 +127,23 @@ async def test_chat_creates_topic_and_sends_message(tmp_path: Path) -> None:
     message, topic_id = fake_client.sent_messages[0]
     assert message == "Tracker 1 (!abcd): hello mesh"
     assert topic_id == "topic-created"
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_topic_logs_error_and_creates_when_missing(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake_client = FakeRchClient()
+    core = BridgeCore(_config(tmp_path), fake_client)
+
+    with caplog.at_level(logging.ERROR):
+        topic_id = await core.bootstrap_topic(channel=0)
+
+    assert topic_id == "topic-created"
+    assert fake_client.topics
+    assert fake_client.topics[0]["TopicPath"] == "meshtastic.channel.0"
+    assert "was not found in RCH. Creating topic now." in caplog.text
 
 
 @pytest.mark.asyncio

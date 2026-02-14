@@ -99,6 +99,9 @@ class BridgeCore:
         normalized = f"{display_name} ({event.node_id}): {message}"
         await self._rch.send_message(content=normalized, topic_id=topic_id)
 
+    async def bootstrap_topic(self, channel: int) -> str:
+        return await self._ensure_topic_id(channel, emit_error_on_create=True)
+
     async def _ensure_node_binding(
         self, event: MeshtasticPositionEvent
     ) -> NodeBinding:
@@ -151,12 +154,17 @@ class BridgeCore:
         self._node_bindings[binding_key] = binding
         return binding
 
-    async def _ensure_topic_id(self, channel: int) -> str:
+    async def _ensure_topic_id(
+        self,
+        channel: int,
+        *,
+        emit_error_on_create: bool = False,
+    ) -> str:
         cached = self._topic_ids.get(channel)
         if cached:
             return cached
 
-        topic_path = self._config.mapping.topic_path_template.format(channel=channel)
+        topic_path = self._config.mapping.chat_topic_path.format(channel=channel)
         topic_name = self._config.mapping.topic_name_template.format(channel=channel)
 
         topics = await self._rch.list_topics()
@@ -169,6 +177,12 @@ class BridgeCore:
                 if topic_id:
                     self._topic_ids[channel] = str(topic_id)
                     return str(topic_id)
+
+        if emit_error_on_create:
+            LOG.error(
+                "Configured topic path '%s' was not found in RCH. Creating topic now.",
+                topic_path,
+            )
 
         created = await self._rch.create_topic(
             topic_name=topic_name,

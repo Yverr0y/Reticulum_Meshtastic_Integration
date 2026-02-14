@@ -66,6 +66,14 @@ class BridgeService:
                 LOG.info("Bootstrapped %s existing Meshtastic node bindings", core.observed_nodes)
             except RchClientError as exc:
                 LOG.warning("Bootstrap from RCH markers failed: %s", exc)
+            try:
+                await core.bootstrap_topic(self._config.meshtastic.channel)
+                LOG.info(
+                    "Verified RCH topic for channel=%s",
+                    self._config.meshtastic.channel,
+                )
+            except RchClientError as exc:
+                LOG.error("Startup topic verification failed: %s", exc)
 
             status_store.set_observed_nodes(core.observed_nodes)
             status_store.write_snapshot(state=self._derive_state(status_store))

@@ -36,6 +36,7 @@ def _app_config(tmp_path: Path) -> AppConfig:
             timeout_seconds=2.0,
         ),
         mapping=MappingConfig(
+            chat_topic_path="meshtastic.channel.{channel}",
             topic_path_template="meshtastic.channel.{channel}",
             topic_name_template="Meshtastic Channel {channel}",
             marker_type="meshtastic_node",
@@ -302,6 +303,17 @@ async def test_service_drops_failed_outbound_event(tmp_path: Path) -> None:
         nonlocal patch_calls
         if request.method == "GET" and request.url.path == "/api/markers":
             return httpx.Response(200, json=[])
+        if request.method == "GET" and request.url.path == "/Topic":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "TopicID": "topic-service",
+                        "TopicPath": "meshtastic.channel.0",
+                        "TopicName": "Meshtastic Channel 0",
+                    }
+                ],
+            )
         if request.method == "POST" and request.url.path == "/api/markers":
             return httpx.Response(201, json={"object_destination_hash": "obj-service"})
         if request.method == "PATCH" and request.url.path == "/api/markers/obj-service/position":

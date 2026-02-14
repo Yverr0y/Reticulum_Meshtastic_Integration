@@ -51,6 +51,13 @@ Use `config.ini` and update required fields:
 - `[rch].rest_url` (optional; defaults to `http://localhost:8000`)
 - `[rch].auth_mode` (optional; default is unauthenticated `none`)
 - `[rch].api_token` (required only for `bearer` or `x_api_key`)
+- `[mapping].chat_topic_path` (optional; default `meshtastic.channel.{channel}`)
+
+Chat topic behavior:
+
+- On startup, the bridge loads RCH topics and verifies the configured chat topic path exists.
+- If the topic is missing, the bridge logs an error and creates it automatically.
+- Default created path format is `meshtastic.channel.{channel}` (for channel `0`, this is `meshtastic.channel.0`).
 
 Runtime paths (`pid_file`, `status_file`) are resolved relative to the config file directory when not absolute.
 
@@ -139,7 +146,8 @@ pytest -q
   - Standard Meshtastic marker defaults to `map-marker-account`; if `marker_type` is `auto` (or left legacy `meshtastic_node`), the bridge sends marker type equal to the selected symbol.
 - Chat not visible
   - Check topic permissions and `POST /Message` authorization.
-  - Confirm `topic_path_template` resolves as expected.
+  - Confirm `[mapping].chat_topic_path` resolves as expected.
+  - On startup, check logs for "Configured topic path ... was not found in RCH. Creating topic now."
 - Reconnect loop noisy
   - Increase `[runtime].reconnect_max_seconds`.
   - Set `[general].log_level = WARNING` for reduced logging.
